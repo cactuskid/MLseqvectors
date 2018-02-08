@@ -1,17 +1,7 @@
 
-
-#modify
-
-# coding: utf-8
-
-# In[1]:
-
-
 import csv
-import keras
 from Bio import SeqIO
 import numpy as np
-import keras
 import scipy.signal as sig
 import scipy.linalg as linalg
 from scipy.fftpack import rfft, fftshift
@@ -22,142 +12,7 @@ import multiprocessing as mp
 import functools
 
 
-# In[2]:
-
-
-def seq2vec(argvec, hyperparams):
-    seqvec = argvec[0]
-    propmat = np.zeros((len(propdict),len(seqvec)))
-    for i,prop in enumerate(propdict):
-        propmat[i,:] = np.vectorize( hyperparams['propdict'][prop].get)(seqvec)
-    return [propmat]
-
-def gaussianSmooth(argvec, hyperparams):
-    seqvec = argvec[0]
-    for i in range(seqvec.shape[0]):
-        seqvec[i,:] = sig.fftconvolve(seqvec[i,:], hyperparams['Gaussian'], mode='same')
-    return [seqvec]
-
-def fftall(argvec, hyperparams):
-    seqvec = argvec[0]
-    fftmat = np.zeros( seqvec.shape )
-    for row in range( seqvec.shape[0]):
-        fftmat[row,:] = rfft( seqvec[row,:] )
-    return [fftmat ]
-
-
-def clipfft(argvec, hyperparams):
-    #ony up to a certain frequency pad w zeros if fftmat is too small
-    fftmat = argvec[0]
-    if fftmat.shape[1]-1 < hyperparams['clipfreq']:
-        padded = np.hstack( [fftmat , np.zeros( ( fftmat.shape[0] , hyperparams['clipfreq'] - fftmat.shape[1] ))] )
-        return [np.asmatrix(padded.ravel())]
-    else:
-        return [ np.asmatrix(fftmat[:,:hyperparams['clipfreq']].ravel()) ]
-
-
-def retfinal_first(argvec, hyperparams):
-    #convenience function for unpacking
-    return argvec[0]
-    
-    
-def showmat(seqvec):
-    plt.imshow(seqvec ,  aspect='auto')
-    plt.colorbar()
-    plt.show()
-    
-def loadDict(csvfile):    
-    with open(csvfile , 'r') as filestr:
-        final = {}
-        propdict= csv.DictReader(filestr)
-        for row in propdict:
-            
-            for key in row.keys():
-                if key != 'letter Code' and key!= 'Amino Acid Name':
-                    if key not in final:
-                        final[key]={}
-                    final[key][row['letter Code']] = float(row[key])
-    return final
-
-
-def compose(functions):
-    def compose2(f, g):
-        return lambda x: f(g(x))
-    retfunction = functools.reduce(compose2, functions, lambda x: x)
-
-    return retfunction
-
-def seq2numpy(argvec, hyperparams):
-    seq = argvec
-    return [list(seq)]
-
-def worflow( input1, functions , kwargs):
-    for function in functions:
-        input1 = function( (input1,kwargs) )  
-    return input1
-
-def dataGen( fastas , fulldata = False):
-    for fasta in fastas:
-        fastaIter = SeqIO.parse(fasta, "fasta")
-        for seq in fastaIter:
-            if len(seq.seq)>0:
-                if fulldata == False:
-                    yield seq.seq
-                else:
-                    yield seq
-            
-
-
-
-# In[3]:
-
-
-propdict = loadDict('./physicalpropTable.csv')
-
-print('physical properties of amino acids')
-print(propdict)
-
-#gaussian smooth to apply physical properties of neighbors to each residue. tuneable kmer?
-nGaussian = 5
-stdv = .5
-window = sig.gaussian(nGaussian, std=stdv)
-window /= np.sum(window)
-print('gaussian filter for sequence physical props')
-plt.plot(window)
-plt.show()
-
-
-hyperparams={'propdict': propdict  , 'Gaussian':window , 'clipfreq':500 }
-
-seqdir = './datasets/truepositive/'
-fastas = glob.glob(seqdir +'*.fasta')
-
-
-seqIter = dataGen(fastas)
-pipeline_functions = [ seq2numpy,  seq2vec , gaussianSmooth, fftall , clipfft , retfinal_first ]
-configured = []
-
-for func in pipeline_functions:
-    configured.append(functools.partial( func , hyperparams=hyperparams ) )
-
-seq = next(seqIter)
-for func in configured:
-    seq = func(seq)
-    print(seq)
-
-pipeline = compose(reversed(configured))
-for i in range(20):
-    seq = next(seqIter)
-    print(seq)
-    res = pipeline(seq)
-    print(res)
-    print(res.shape)
-    
-
-
-# In[4]:
-
-
+import functions
 #make the data
 #works
 import pickle
@@ -165,83 +20,92 @@ import random
 
 
 
-folders = ['./datasets/truepositive/' , './datasets/truenegative/' ]
 
-#use random uniclust entries as a negative dataset
-def iter_sample_fast(iterator, samplesize):
-    results = []
-    
-    # Fill in the first samplesize elements:
-    for _ in range(samplesize):
-        results.append(next(iterator))
-    random.shuffle(results)  # Randomize their positions
-    for i, v in enumerate(iterator, samplesize):
-        r = random.randint(0, i)
-        if r < samplesize:
-            results[r] = v  # at a decreasing rate, replace random items
+loadRandom = True
+negativesamples = 10000
 
-    if len(results) < samplesize:
-        raise ValueError("Sample larger than population.")
-    return results
+#gaussian smooth to apply physical properties of neighbors to each residue. tuneable kmer?
+nGaussian = 7
+stdv = .5
 
 
-uniclust = '/home/cactuskid/DB/uniclust30_2017_10_seed.fasta'
-loadRandom = False
-negativesamples = 5000
+workingdir = './'
+datadir = '/scratch/cluster/monthly/dmoi/MachineLearning/'
+positive_datasets = workingdir + 'datasets/truepositive/'
+negative_dataset = datadir + 'truenegative/'
 
+
+uniclust = datadir+ 'uniclust/uniclust30_2017_10_seed.fasta'
+scop = ''
+phobius = ''
+psipred = ''
+
+
+propdict = loadDict('./physicalpropTable.csv')
+print('physical properties of amino acids')
+print(propdict)
+window = sig.gaussian(nGaussian, std=stdv)
+window /= np.sum(window)
+print('gaussian filter for sequence physical props')
+print(window)
+
+hyperparams={'propdict': propdict  , 'Gaussian':window , 'clipfreq':500 }
+pipeline_functions = [ seq2numpy,  seq2vec , gaussianSmooth, fftall , clipfft , retfinal_first ]
+configured = []
+
+for func in pipeline_functions:
+    configured.append(functools.partial( func , hyperparams=hyperparams ) )
+
+physicalProps_pipeline = compose(reversed(configured))
+
+postives = [x[0] for x in os.walk(positive_datasets)]
+folders = [ negative_dataset ]+ positives
 if loadRandom == True:
     print('loading random entries to negative dataset')
     seqIter = dataGen([uniclust] , True )
     randomentries = iter_sample_fast( seqIter , negativesamples)
-    SeqIO.write(randomentries, folders[1] + 'rando_uniclust.fasta', "fasta")
+    SeqIO.write(randomentries, datadir + 'rando_uniclust.fasta', "fasta")
     print('done')
 
-datasets = []
-for folder in folders:
-    #fourier transform all fastas
-    print('fourier transform of '+folder)
-    fastas = glob.glob(folder +'*.fasta')
-    seqIter = dataGen(fastas)
-    x = np.array( np.vstack(list(map(pipeline, seqIter ))) )
-    #remove nans
-    x = x[~np.isnan(x).any(axis=1)]
-    y = [ folder ]*(x.shape[0])
-    datasets.append( ( x,y) )
-    print('DONE')
-    
-x,y = zip(*datasets)
-Xtotal = np.vstack(x)
-Ytotal= np.concatenate(y)
+
+if Generate_XY = True
+    datasets = []
+    for folder in folders:
+        #fourier transform all fastas
+        fastas = glob.glob(folder +'*.fasta')
+        seqDF = fastasToDF(fastas)
+        seqDF['physical'] = seqDF['seq'].apply(physicalProps_pipeline)
+        seqDF['phobius'] = seqDF['seq'].apply(phobius_pipeline)
+        seqDF['psipred'] = seqDF['seq'].apply(psipred_pipeline)
+        
 
 
-print('xmat')
-print(Xtotal.shape)
-print('ymat')
-print(Ytotal.shape)
+        x = np.array( np.vstack(list(map(pipeline, seqIter ))) )
+        #remove nans
 
-with open( './xdata.pkl' , 'wb') as handle:
-    pickle.dump( Xtotal, handle, -1)
+        x = x[~np.isnan(x).any(axis=1)]
+        y = [ folder ]*(x.shape[0])
+        datasets.append( ( x,y) )
+        print('DONE')
+    x,y = zip(*datasets)
+    Xtotal = np.vstack(x)
+    Ytotal= np.concatenate(y)
+    print('xmat')
+    print(Xtotal.shape)
+    print('ymat')
+    print(Ytotal.shape)
 
-with open( './ydata.pkl' , 'wb') as handle:
-    pickle.dump( Ytotal, handle,-1)
-    
+    with open( datadir +'xdata.pkl' , 'wb') as handle:
+        pickle.dump( Xtotal, handle, -1)
 
+    with open( datadir+'ydata.pkl' , 'wb') as handle:
+        pickle.dump( Ytotal, handle,-1)
+        
 
-# In[31]:
 
 
 #learn and validate 
 #works
-
-from keras.models import Sequential
-from keras.layers import Dense, Conv1D
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.utils import np_utils
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import KFold , train_test_split
-from sklearn.preprocessing import LabelEncoder , robust_scale , normalize
-from sklearn.pipeline import Pipeline
-
 
 # define model. this could probably be a lot fancier... just used out of the box stuff
 #isnt overfitting so we can def up the number of layers/nodes
@@ -258,8 +122,13 @@ def baseline_model(nlayers ,firstsize, hiddensize,  inputdim, outputdim , modelt
     else:
         model.add(Dense(firstsize , input_dim= inputdim  ))
 
+    #added a dropout layer so it would generalize better
+    
+    model.add(Dropout(.5))
+
     for i in range(nlayers):
         model.add(Dense(hiddensize ))
+    
     
     model.add(Dense(outputdim , activation = 'softmax'))
     # Compile model
@@ -269,10 +138,10 @@ def baseline_model(nlayers ,firstsize, hiddensize,  inputdim, outputdim , modelt
 
 
 
-with open( './xdata.pkl' , 'rb') as handle:
+with open( datadir + 'xdata.pkl' , 'rb') as handle:
     X = pickle.load(handle)
 
-with open( './ydata.pkl' , 'rb') as handle:
+with open( datadir '/ydata.pkl' , 'rb') as handle:
     Y = pickle.load(handle)
     
 #X = robust_scale(X)
@@ -298,18 +167,78 @@ retmodel = functools.partial( baseline_model , nlayers , firstsize, hiddensize, 
 
 
 #set up the problem
-estimator = KerasClassifier(build_fn=retmodel, epochs=20, batch_size=15, verbose=1)
-#X_train, X_test, y_train, y_test = train_test_split( X, dummy_y, test_size=0.2 , random_state=0)
+estimator = KerasClassifier(build_fn=retmodel, epochs=15, batch_size=15, verbose=1)
 
 
-# In[ ]:
+# In[6]:
 
 
-#kfold validation of the estimator
-kfold = KFold(n_splits=10, shuffle=True, random_state=0)
-results = cross_val_score(estimator, X, dummy_y , cv=kfold)
-print("Baseline: %.2f%% (%.2f%%)" % (results.mean()*100, results.std()*100))
+
+from sklearn.metrics import confusion_matrix
+
+from sklearn.model_selection import KFold
+
+import itertools
+
+def plot_confusion_matrix(cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+
+    print(cm)
+
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
 
 
+kf= KFold(n_splits=5, shuffle=True, random_state=0)
+
+results = []
+for train, test in kf.split(X):
+    X_train, X_test, y_train, y_test = X[train], X[test], dummy_y[train], dummy_y[test]
+    encoded_Y_train, encoded_Y_test = encoded_Y[train], encoded_Y[test]
+    estimator.fit( X_train, y_train)
+    y_pred = estimator.predict( X_test)
+    
+    
+    # Compute confusion matrix
+    cnf_matrix = confusion_matrix(encoded_Y_test, y_pred)
+    results.append(cnf_matrix)
+    plt.figure()
+    plot_confusion_matrix(results[0], classes=folders.reverse() ,
+                      title='Confusion matrix, without normalization')
+    
+    plt.show()
+
+    plt.figure()
+
+    plot_confusion_matrix(results[0], classes=folders.reverse() , normalize = True )
+
+    plt.show()
+    
 
 
