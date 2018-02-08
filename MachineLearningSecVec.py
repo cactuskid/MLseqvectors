@@ -1,44 +1,8 @@
-
-import csv
-from Bio import SeqIO
-import numpy as np
-import scipy.signal as sig
-import scipy.linalg as linalg
-from scipy.fftpack import rfft, fftshift
-import glob
-from matplotlib import pyplot as plt
-
-import multiprocessing as mp
-import functools
-
-
 import functions
-#make the data
-#works
-import pickle
-import random
+import config
 
 
 
-
-loadRandom = True
-negativesamples = 10000
-
-#gaussian smooth to apply physical properties of neighbors to each residue. tuneable kmer?
-nGaussian = 7
-stdv = .5
-
-
-workingdir = './'
-datadir = '/scratch/cluster/monthly/dmoi/MachineLearning/'
-positive_datasets = workingdir + 'datasets/truepositive/'
-negative_dataset = datadir + 'truenegative/'
-
-
-uniclust = datadir+ 'uniclust/uniclust30_2017_10_seed.fasta'
-scop = ''
-phobius = ''
-psipred = ''
 
 
 propdict = loadDict('./physicalpropTable.csv')
