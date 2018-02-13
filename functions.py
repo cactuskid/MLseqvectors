@@ -43,20 +43,63 @@ def parallelize_dataframe(df, func , num_partitions):
     pool.join()
     return df
 
+
+def pipeline_parallel_onDF(df, pipeline, num_partitions ):
+    for func in pipeline:
+        df = parallelize_dataframe(df, func , num_partitions)
+    return df
+
 def openprocess(args , inputstr =None ):
-    done = subprocess.run(args, stdin=None, input=inputstr, stdout=subprocess.PIPE, stderr=None, shell=False, cwd=None, timeout=None, check=False, encoding=None, errors=None)
-    return done.stdout
+    args = shlex.split(args)
+    p = subprocess.Popen(args,  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr= subprocess.PIPE)
+    if inputstr != None:
+        p.stdin.write(inputstr.encode())
+    output = p.communicate()
+    p.wait()
 
-def prepCL(commandstr):
-    args = shlex.split(commandstr)
+    return output[0].decode()
 
-def runCLI(commandstr, stdin):
-    args = prepCL(commandstr)
-    return openprocess(args, stdin)
+def parsephobius( phobiusstr,hyperparams ):
+    maxlen = 0 
+    lines = phobiusstr.split('\n')
+    for i,line in enumerate(lines):
+        vals = line.split()
+        if i > 0:
+            try:
+                end = int(vals[3])
+                if maxlen < end:
+                    maxlen = end
+            except:
+                pass
+    domains =  {'SIGNAL':0, 'CYTOPLASMIC':1, 'NON CYTOPLASMIC':2, 'NON CYTOPLASMIC':3, 'TRANSMEMBRANE':4}
+    propmat = np.zeros((len(domains),maxlen))
 
-def runphobius(seqstr):
-    #run phobius on a sequence and collect output
-    return runCLI(config.phobius, seqstr)
+    for i,line in enumerate(lines):
+        vals = line.split()
+        if i > 0:
+            key = None
+            if 'SIGNAL' in line:
+                key = 'SIGNAL'
+            elif 'TRANSMEMBRANE' in line:
+                key = 'TRANSMEMBRANE'
+            elif 'NON' in line:
+                key = 'NON CYTOPLASMIC'
+            elif 'CYTOPLASMIC' in line:
+                key = 'CYTOPLASMIC'
+            if key != None:
+                start = int(vals[2])
+                end = int(vals[3])
+                propmat[ domains[key] , start:end ] = 1
+    
+    if hyperparams['verbose'] == True:
+        print (propmat)
+
+
+    return [propmat]
+
+
+def runphobius(seqstr , hyperparams):
+    return openprocess(config.phobius, seqstr)
 
 
 def runpsipred(seqstr):
@@ -77,6 +120,10 @@ def seq2vec(argvec, hyperparams):
 
 def gaussianSmooth(argvec, hyperparams):
     seqvec = argvec[0]
+
+    if hyperparams['verbose'] == True:
+        print (seqvec)
+
     for i in range(seqvec.shape[0]):
         seqvec[i,:] = sig.fftconvolve(seqvec[i,:], hyperparams['Gaussian'], mode='same')
     return [seqvec]
@@ -84,6 +131,11 @@ def gaussianSmooth(argvec, hyperparams):
 def fftall(argvec, hyperparams):
     seqvec = argvec[0]
     fftmat = np.zeros( seqvec.shape )
+    
+    if hyperparams['verbose'] == True:
+        print (seqvec)
+
+
     for row in range( seqvec.shape[0]):
         fftmat[row,:] = rfft( seqvec[row,:] )
     return [fftmat ]
@@ -160,7 +212,9 @@ def fastasToDF(fastas):
         fastaIter = SeqIO.parse(fasta, "fasta")
         for seq in fastaIter:
             if len(seq.seq)>0:
-                DFdict[seq.description] = {'seq':str(seq.seq)}  
+                DFdict[seq.description] = {'seq':str(seq.seq) , 'fasta':'>'+str(seq.description)+'\n'+str(seq.seq)}  
+                  
+
     print(DFdict)
     return pd.DataFrame.from_dict(DFdict, orient = 'index')
 

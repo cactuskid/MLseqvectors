@@ -15,5 +15,6 @@ negative_dataset = datadir + 'truenegative/'
 
 uniclust = datadir+ 'uniclust/uniclust30_2017_10_seed.fasta'
 scop = ''
-phobius = './phobius/phobius.pl'
+phobius = './phobius/phobius.pl  '
+
 psipred = ''
