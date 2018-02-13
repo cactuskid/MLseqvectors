@@ -34,36 +34,35 @@ import pandas as pd
 import shlex, subprocess
 import config
 import dask.dataframe as dd
+import dask.array as da
+from dask.delayed import delayed
 
 
+def hd5save(df,filename , groupname):
 
-def yeild_df_rows(df, hyperparams):
-    iterator = df.__iter__()
-    for row in iterator:
-        yield row
+    tostore ={}
+    for col in df.columns:
+        array = np.vstack( zip(* df[col].values ))
+        tostore[col] = array
+    da.to_hdf5(filename, tostore )
+
 
 def applypipeline_to_series(series, pipeline, hyperparams):
     newseries = series.map( pipeline )
     if hyperparams['printResult']== True:
         print(newseries)
-
     return newseries
 
 def openprocess(args , inputstr =None , verbose = False ):
     args = shlex.split(args)
     p = subprocess.Popen(args,  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr= subprocess.PIPE)
-    
     if verbose == True:
         print(inputstr)
-        
-    
     if inputstr != None:
         p.stdin.write(inputstr.encode())
-
     output = p.communicate()
     if verbose == True:
         print(output)
-
     p.wait()
     return output[0].decode()
 
@@ -165,7 +164,7 @@ def clipfft(argvec, hyperparams):
             
             print ('DONE')
 
-        return [ np.asmatrix(fftmat[:,:hyperparams['clipfreq']].ravel()) ]
+        return  np.asmatrix(fftmat[:,:hyperparams['clipfreq']].ravel()) 
 
 
 def retfinal_first(argvec, hyperparams):

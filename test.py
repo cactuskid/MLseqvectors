@@ -12,12 +12,16 @@ dask.set_options(get=dask.multiprocessing.get)
 testOne = False
 nGaussian = 7
 stdv=.5
+chunks = functions.mp.cpu_count()
 window = functions.sig.gaussian(nGaussian, std=stdv)
 window /= functions.np.sum(window)
 
 positive_datasets = config.workingdir + 'datasets/'
-
 positives = [x[0] for x in os.walk(positive_datasets)]
+
+
+
+
 
 propdict = functions.loadDict('./physicalpropTable.csv')
 hyperparams={'propdict': propdict  , 'Gaussian':window , 'clipfreq':500, 'verbose' : False , 'printResult' : False  }
@@ -44,9 +48,11 @@ applyphobiustoseries = functions.functools.partial( functions.applypipeline_to_s
 applyphysicaltoseries = functions.functools.partial( functions.applypipeline_to_series , pipeline=physicalProps_pipeline  , hyperparams=hyperparams ) 
 
 
+pipelines={'physical':applyphysicaltoseries}#, 'phobius': applyphobiustoseries }
 for folder in positives:
 	fastas = glob.glob(folder+'/*fasta')
 	if len(fastas)>0:
+		
 		if testOne == True:
 			regex = functions.re.compile('[^a-zA-Z1-9]')
 			#First parameter is the replacement, second parameter is your input string
@@ -68,10 +74,22 @@ for folder in positives:
 			print(fastas)
 			df = functions.fastasToDF(fastas)
 			df['folder'] = folder
-			meta = functions.dd.utils.make_meta( {'physical': object }, index=None)
-			df['physical'] = df['seq'].map_partitions( applyphysicaltoseries).compute(get=get)
-			print(df)
-			meta = functions.dd.utils.make_meta( {'phobius': object }, index=None)
-			df['phobius'] = df['fasta'].map_partitions( applyphobiustoseries, meta = meta ).compute(get=get)
-			print(df)
+			
+			for name in pipeline:
+				meta = functions.dd.utils.make_meta( {name: object }, index=None)
+				df[name] = df['seq'].map_partitions( pipelines[name] ).compute(get=get)
+				print(df)
 
+			if save_data_tohdf5 == True:
+				dfs = df.to_delayed()
+				#save datsets to hdf5 format in chunks
+				if overwrite = True:
+					for i in range(chunks):
+						filenames.append(savedir + 'hdf5'+str(i)+'.hd5')
+				else:
+					filenames = glob.glob(savedir + '*.hd5')
+				for name in pipelines:
+					writes = [delayed(functions.hd5save)(df, fn , name) for df, fn in zip(dfs, filenames)]
+				dd.compute(*writes)
+
+		
