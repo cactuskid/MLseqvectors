@@ -41,9 +41,10 @@ from dask.delayed import delayed
 def hd5save(df,f ):
     tostore ={}
     for col in df.columns:
-        array = np.vstack( df[col].values )
-        tostore[col] = array
+        array = np.block( [df[col].values] )
         print(array)
+
+        
         """
                                     if col not in f:
                                         dset = f.create_dataset(col, data=arr , maxshape=(None, arr.shape[1]))
@@ -106,7 +107,7 @@ def parsephobius( phobiusstr,hyperparams ):
                 propmat[ domains[key] , start:end ] = 1
     
     if hyperparams['verbose'] == True:
-        print (propmat)
+        print(propmat)
 
 
     return [propmat]
