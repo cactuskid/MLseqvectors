@@ -15,7 +15,7 @@ import pickle
 import random
 
 
-
+import re, string 
 
 from keras.models import Sequential
 from keras.layers import Dense, Conv1D, Dropout
@@ -27,36 +27,44 @@ from sklearn.preprocessing import LabelEncoder , robust_scale , normalize
 from sklearn.pipeline import Pipeline
 from subprocess import Popen
 import os
-from multiprocessing import Pool
+import multiprocessing as mp
 from Bio import SeqIO
 
 import pandas as pd
 import shlex, subprocess
 import config
+import dask.dataframe as dd
 
 
-def parallelize_dataframe(df, func , num_partitions):
-    df_split = np.array_split(df, num_partitions)
-    pool = Pool(num_partitions)
-    df = pd.concat(pool.map(func, df_split))
-    pool.close()
-    pool.join()
-    return df
 
+def yeild_df_rows(df, hyperparams):
+    iterator = df.__iter__()
+    for row in iterator:
+        yield row
 
-def pipeline_parallel_onDF(df, pipeline, num_partitions ):
-    for func in pipeline:
-        df = parallelize_dataframe(df, func , num_partitions)
-    return df
+def applypipeline_to_series(series, pipeline, hyperparams):
+    newseries = series.map( pipeline )
+    if hyperparams['printResult']== True:
+        print(newseries)
 
-def openprocess(args , inputstr =None ):
+    return newseries
+
+def openprocess(args , inputstr =None , verbose = False ):
     args = shlex.split(args)
     p = subprocess.Popen(args,  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr= subprocess.PIPE)
+    
+    if verbose == True:
+        print(inputstr)
+        
+    
     if inputstr != None:
         p.stdin.write(inputstr.encode())
-    output = p.communicate()
-    p.wait()
 
+    output = p.communicate()
+    if verbose == True:
+        print(output)
+
+    p.wait()
     return output[0].decode()
 
 def parsephobius( phobiusstr,hyperparams ):
@@ -99,7 +107,8 @@ def parsephobius( phobiusstr,hyperparams ):
 
 
 def runphobius(seqstr , hyperparams):
-    return openprocess(config.phobius, seqstr)
+
+    return openprocess(config.phobius, seqstr, hyperparams['verbose'])
 
 
 def runpsipred(seqstr):
@@ -112,17 +121,23 @@ def hourglass():
     pass
 
 def seq2vec(argvec, hyperparams):
+    
+    if hyperparams['verbose'] == True:
+        print(argvec[0].shape)
+
+
     seqvec = argvec[0]
+
     propmat = np.zeros((len(hyperparams['propdict']),len(seqvec)))
+    
     for i,prop in enumerate(hyperparams['propdict']):
-        propmat[i,:] = np.vectorize( hyperparams['propdict'][prop].get)(seqvec)
+        vals = np.vectorize( hyperparams['propdict'][prop].get)(seqvec)
+        propmat[i,:] = vals.ravel()
+
     return [propmat]
 
 def gaussianSmooth(argvec, hyperparams):
     seqvec = argvec[0]
-
-    if hyperparams['verbose'] == True:
-        print (seqvec)
 
     for i in range(seqvec.shape[0]):
         seqvec[i,:] = sig.fftconvolve(seqvec[i,:], hyperparams['Gaussian'], mode='same')
@@ -132,10 +147,6 @@ def fftall(argvec, hyperparams):
     seqvec = argvec[0]
     fftmat = np.zeros( seqvec.shape )
     
-    if hyperparams['verbose'] == True:
-        print (seqvec)
-
-
     for row in range( seqvec.shape[0]):
         fftmat[row,:] = rfft( seqvec[row,:] )
     return [fftmat ]
@@ -146,8 +157,14 @@ def clipfft(argvec, hyperparams):
     fftmat = argvec[0]
     if fftmat.shape[1]-1 < hyperparams['clipfreq']:
         padded = np.hstack( [fftmat , np.zeros( ( fftmat.shape[0] , hyperparams['clipfreq'] - fftmat.shape[1] ))] )
+        if hyperparams['verbose'] == True:
+            print ('DONE')
         return [np.asmatrix(padded.ravel())]
     else:
+        if hyperparams['verbose'] == True:
+            
+            print ('DONE')
+
         return [ np.asmatrix(fftmat[:,:hyperparams['clipfreq']].ravel()) ]
 
 
@@ -188,7 +205,7 @@ def compose(functions):
 
 def seq2numpy(argvec, hyperparams):
     seq = argvec
-    return [list(seq)]
+    return [np.asarray( [char for char in seq] )]
 
 def worflow( input1, functions , kwargs):
     for function in functions:
@@ -207,16 +224,23 @@ def dataGen( fastas , fulldata = False):
 
         
 def fastasToDF(fastas):
+
+    regex = re.compile('[^a-zA-Z1-9]')
+    regexfast = re.compile('[^ARDNCEQGHILKMFPSTWYV]')
+
     DFdict={}
     for fasta in fastas:
         fastaIter = SeqIO.parse(fasta, "fasta")
         for seq in fastaIter:
             if len(seq.seq)>0:
-                DFdict[seq.description] = {'seq':str(seq.seq) , 'fasta':'>'+str(seq.description)+'\n'+str(seq.seq)}  
-                  
-
-    print(DFdict)
-    return pd.DataFrame.from_dict(DFdict, orient = 'index')
+                seqstr = regexfast.sub('', str(seq.seq))
+                desc = regex.sub(' ', str(seq.description))
+                DFdict[seq.description] = {'seq':seqstr , 'fasta':'>'+desc+'\n'+seqstr+'\n'}  
+    
+    df = pd.DataFrame.from_dict(DFdict, orient = 'index')
+    df = dd.from_pandas(df , npartitions = mp.cpu_count() )
+    print( dd)
+    return df
 
 def iter_sample_fast(iterator, samplesize):
     results = []
