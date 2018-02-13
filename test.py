@@ -20,16 +20,16 @@ positive_datasets = config.workingdir + 'datasets/'
 positives = [x[0] for x in os.walk(positive_datasets)]
 
 propdict = functions.loadDict('./physicalpropTable.csv')
-hyperparams={'propdict': propdict  , 'Gaussian':window , 'clipfreq':500, 'verbose' : True , 'printResult' : True  }
+hyperparams={'propdict': propdict  , 'Gaussian':window , 'clipfreq':500, 'verbose' : False , 'printResult' : False  }
 
 
+#####configure pipelines #######################
 physical_pipeline_functions = [ functions.seq2numpy,  functions.seq2vec , functions.gaussianSmooth, functions.fftall , functions.clipfft ]
 configured = []
 
 for func in physical_pipeline_functions:
     configured.append(functions.functools.partial( func , hyperparams=hyperparams ) )
 physicalProps_pipeline  = functions.compose(reversed(configured))
-
 
 phobius_pipeline_functions = [  functions.runphobius,  functions.parsephobius, functions.gaussianSmooth, functions.fftall , functions.clipfft ]
 configured = []
@@ -38,13 +38,14 @@ for func in phobius_pipeline_functions:
 phobius_pipeline = functions.compose(reversed(configured))
 
 
+##### final functions to be mapped #####
 
 applyphobiustoseries = functions.functools.partial( functions.applypipeline_to_series , pipeline=phobius_pipeline  , hyperparams=hyperparams ) 
 applyphysicaltoseries = functions.functools.partial( functions.applypipeline_to_series , pipeline=physicalProps_pipeline  , hyperparams=hyperparams ) 
 
+
 for folder in positives:
 	fastas = glob.glob(folder+'/*fasta')
-
 	if len(fastas)>0:
 		if testOne == True:
 			regex = functions.re.compile('[^a-zA-Z1-9]')
@@ -67,8 +68,10 @@ for folder in positives:
 			print(fastas)
 			df = functions.fastasToDF(fastas)
 			df['folder'] = folder
-			#df['physical'] = df['seq'].map_partitions( applyphysicaltoseries).compute(get=get)
+			meta = functions.dd.utils.make_meta( {'physical': object }, index=None)
+			df['physical'] = df['seq'].map_partitions( applyphysicaltoseries).compute(get=get)
 			print(df)
-			df['phobius'] = df['fasta'].map_partitions( applyphobiustoseries ).compute(get=get)
+			meta = functions.dd.utils.make_meta( {'phobius': object }, index=None)
+			df['phobius'] = df['fasta'].map_partitions( applyphobiustoseries, meta = meta ).compute(get=get)
 			print(df)
 
