@@ -38,13 +38,20 @@ import dask.array as da
 from dask.delayed import delayed
 
 
-def hd5save(df,filename , groupname):
-
+def hd5save(df,f ):
     tostore ={}
     for col in df.columns:
-        array = np.vstack( zip(* df[col].values ))
+        array = np.vstack( df[col].values )
         tostore[col] = array
-    da.to_hdf5(filename, tostore )
+        print(array)
+        """
+                                    if col not in f:
+                                        dset = f.create_dataset(col, data=arr , maxshape=(None, arr.shape[1]))
+                                    else:
+                                        previous = f.col.shape
+                                        fillx = previous[0]+data.shape[0]
+                                        filly = previous[0]+data.shape[0]
+                                    """    
 
 
 def applypipeline_to_series(series, pipeline, hyperparams):

@@ -10,11 +10,15 @@ dask.set_options(get=dask.multiprocessing.get)
 
 
 testOne = False
+
 nGaussian = 7
 stdv=.5
 chunks = functions.mp.cpu_count()
 window = functions.sig.gaussian(nGaussian, std=stdv)
 window /= functions.np.sum(window)
+
+save_data_tohdf5 = True
+savedir = './'
 
 positive_datasets = config.workingdir + 'datasets/'
 positives = [x[0] for x in os.walk(positive_datasets)]
@@ -75,7 +79,7 @@ for folder in positives:
 			df = functions.fastasToDF(fastas)
 			df['folder'] = folder
 			
-			for name in pipeline:
+			for name in pipelines:
 				meta = functions.dd.utils.make_meta( {name: object }, index=None)
 				df[name] = df['seq'].map_partitions( pipelines[name] ).compute(get=get)
 				print(df)
@@ -83,13 +87,27 @@ for folder in positives:
 			if save_data_tohdf5 == True:
 				dfs = df.to_delayed()
 				#save datsets to hdf5 format in chunks
-				if overwrite = True:
-					for i in range(chunks):
-						filenames.append(savedir + 'hdf5'+str(i)+'.hd5')
-				else:
-					filenames = glob.glob(savedir + '*.hd5')
-				for name in pipelines:
-					writes = [delayed(functions.hd5save)(df, fn , name) for df, fn in zip(dfs, filenames)]
-				dd.compute(*writes)
+				filenames=[]
+				handles = []
+				overwrite = False
+
+				for i in range(len(dfs)):
+					name = savedir + 'hdf5_'+str(i)+'.hd5'
+					filenames.append(name)
+
+				"""if overwrite == True:
+																	for i in range(chunks):
+																		name = savedir + 'hdf5'+str(i)+'.hd5'
+																		filenames.append(name)
+																		handles.append(h5py.File(name,'w'))
+																else:
+																	filenames = glob.glob(savedir + '*.hd5')
+																	for name in filenames:
+																		handles.append(h5py.File(name,'w'))
+												"""
+				
+				print(filenames)
+				writes = [functions.delayed(functions.hd5save)(df , fn ) for df, fn in zip(dfs, filenames)]
+				functions.dd.compute(*writes)
 
 		
