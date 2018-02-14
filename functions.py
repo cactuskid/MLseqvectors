@@ -38,21 +38,13 @@ import dask.array as da
 from dask.delayed import delayed
 
 
-def hd5save(df,f ):
-    tostore ={}
+def hd5save(df, f ):
     for col in df.columns:
-        array = np.block( [df[col].values] )
-        print(array)
+        print(col)
+        array = np.vstack( df[col].values )
+        print(array.shape)
 
-        
-        """
-                                    if col not in f:
-                                        dset = f.create_dataset(col, data=arr , maxshape=(None, arr.shape[1]))
-                                    else:
-                                        previous = f.col.shape
-                                        fillx = previous[0]+data.shape[0]
-                                        filly = previous[0]+data.shape[0]
-                                    """    
+            
 
 
 def applypipeline_to_series(series, pipeline, hyperparams):
@@ -166,13 +158,13 @@ def clipfft(argvec, hyperparams):
         padded = np.hstack( [fftmat , np.zeros( ( fftmat.shape[0] , hyperparams['clipfreq'] - fftmat.shape[1] ))] )
         if hyperparams['verbose'] == True:
             print ('DONE')
-        return [np.asmatrix(padded.ravel())]
+        return padded.ravel()
     else:
         if hyperparams['verbose'] == True:
             
             print ('DONE')
 
-        return  np.asmatrix(fftmat[:,:hyperparams['clipfreq']].ravel()) 
+        return  fftmat[:,:hyperparams['clipfreq']].ravel()
 
 
 def retfinal_first(argvec, hyperparams):
@@ -230,7 +222,7 @@ def dataGen( fastas , fulldata = False):
                     yield seq
 
         
-def fastasToDF(fastas):
+def fastasToDF(fastas ,DDF = None):
 
     regex = re.compile('[^a-zA-Z1-9]')
     regexfast = re.compile('[^ARDNCEQGHILKMFPSTWYV]')
@@ -245,9 +237,11 @@ def fastasToDF(fastas):
                 DFdict[seq.description] = {'seq':seqstr , 'fasta':'>'+desc+'\n'+seqstr+'\n'}  
     
     df = pd.DataFrame.from_dict(DFdict, orient = 'index')
-    df = dd.from_pandas(df , npartitions = mp.cpu_count() )
-    print( dd)
-    return df
+    if DDF == None:
+        DDF = dd.from_pandas(df , npartitions = mp.cpu_count() )
+    else:
+        DDF.append(dd.from_pandas(df , npartitions = mp.cpu_count() ))
+    return DDF
 
 def iter_sample_fast(iterator, samplesize):
     results = []
