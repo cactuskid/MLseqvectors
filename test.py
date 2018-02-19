@@ -37,9 +37,19 @@ if config.create_data == True:
 	applyphysicaltoseries = functions.functools.partial( functions.applypipeline_to_series , pipeline=physicalProps_pipeline  , hyperparams=hyperparams ) 
 	#use pipelines to generate feature vecotrs for fastas 
 	#store matrices in hdf5 files
-	pipelines={'physical':applyphysicaltoseries}#, 'phobius': applyphobiustoseries }
+	pipelines={'physical':applyphysicaltoseries, 'phobius': applyphobiustoseries }
+	inputData = {'physical':'seq', 'phobius': 'fasta' }
 	df = None
-	for folder in positives:
+
+	if config.generate_negative == True:
+		print('generating negative sample fasta')
+		fastaIter = functions.SeqIO.parse(config.uniclust, "fasta")
+		sample = functions.iter_sample_fast(fastaIter, config.NegSamplesize)
+		samplename = config.negative_dataset+str(config.NegSamplesize)+'rand.fasta'
+		
+		seqIO.write(sample , samplename , format = 'fasta')
+
+	for folder in positives + [config.negative_dataset]:
 		fastas = glob.glob(folder+'/*fasta')
 		if len(fastas)>0:
 			if config.testOne == True:
@@ -59,13 +69,13 @@ if config.create_data == True:
 						result = phobius_pipeline(fastastr)
 						print (result)
 			else:
-				print(fastas)
 				df = functions.fastasToDF(fastas, df)
 				df['folder'] = functions.np.string_(folder)
 
 	for name in pipelines:
 		meta = functions.dd.utils.make_meta( {name: object }, index=None)
-		df[name] = df['seq'].map_partitions( pipelines[name] ).compute(get=get)
+
+		df[name] = df[inputData[name]].map_partitions( pipelines[name] ).compute(get=get)
 
 	if config.save_data_tohdf5 == True:
 		dfs = df.to_delayed()
