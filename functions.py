@@ -35,17 +35,74 @@ import shlex, subprocess
 import config
 import dask.dataframe as dd
 import dask.array as da
+import dask
 from dask.delayed import delayed
+import h5py
 
 
-def hd5save(df, f ):
+def hd5save(df, name , overwrite ,verbose = False):
+    #dataframe columns should all be arrays or bytestrings w utf-8 encoding
+
+    if overwrite == True:
+        f = h5py.File(name,'w')
+    else:
+        f = h5py.File(name,'a')
+    f.create_group('datasets')
+
     for col in df.columns:
-        print(col)
-        array = np.vstack( df[col].values )
-        print(array.shape)
+        try:
+            array = np.vstack( df[col].values )
+        except:
+            maxlen = 0
+            for array in df[col].values:
+                if len(array) > maxlen :
+                    maxlen=len(array)
+            #pad bytestrings with spaces to maxlen
 
+            array = np.vstack( [ np.string_(np.pad(array,((0, maxlen - len(array))) , mode='constant' , constant_values=20 )) for array in df[col].values ]  )
+        
+        if col not in f['datasets']:
+            try:
+                dset = f['datasets'].create_dataset(col, data=array ,chunks=True)
+            except :
+                dset = f['datasets'].create_dataset(col, data=array,  dtype="S" , chunks=True)
+        else:
+            dset = f['datasets'][col]
+            x,y = dset.shape
+            inx,iny = array.shape
+            #resize dataset for new data.
+            dset.resize(inx+x, y + max(0,iny-y) )
+            dset[x:inx + x , : ] = array
+    f.close()
+
+def DaskArray_hd5loadDataset(files , verbose = False ):
+    #load to dask arrays, all arrays passed should have the same dataset names
+    datasets = {}
+    for name in files:
+        f = h5py.File(name,'r')
+        print(list(f['datasets'].keys()) ) 
+        for dataset in f['datasets'].keys():
+            chunksize = [  max(1, int(chunk/2) ) for chunk in f['datasets'][dataset].chunks ]
             
-
+            if verbose == True:
+                print('chunking smaller than hdf5')
+                print( chunksize)
+                print( f['datasets'][dataset].chunks)
+                #print(f['datasets'][dataset][0:10])
+            
+            if dataset not in datasets:
+                datasets[dataset] = da.from_array(f['datasets'][dataset], chunks=chunksize )
+                if verbose==True:
+                    f['datasets'][dataset][0:2]
+                    print(datasets[dataset][0:2].compute(get=dask.get) )
+            else:
+                array = da.from_array(f['datasets'][dataset], chunks=chunksize )
+                datasets[dataset] = da.concatenate([array, datasets[dataset]], axis=0)
+                if verbose ==True:
+                    print('append')
+                    print(datasets[dataset])
+                    print(datasets[dataset][0:10].compute(get=dask.get) )
+    return datasets
 
 def applypipeline_to_series(series, pipeline, hyperparams):
     newseries = series.map( pipeline )
@@ -110,11 +167,20 @@ def runphobius(seqstr , hyperparams):
     return openprocess(config.phobius, seqstr, hyperparams['verbose'])
 
 
-def runpsipred(seqstr):
+def rungarnier(seqstr):
     #run psipred and collect output
     pass
 
-def hourglass():
+
+def bezier(stop, start):
+    for i in range(100):
+        n= i/100
+        (1-n)**2 p0 + 2*(1-n)*n p1 + n**2 p2  
+
+def hourglass(nlayers, mlayers, chokept, startneurons, endneurons):
+    
+    layersizes = np.zeros( (mlayers+nlayers,1 ))
+
     #define NN architectcure with classic bottleneck shape
     #pepper in some dropouts
     pass
@@ -122,11 +188,9 @@ def hourglass():
 def seq2vec(argvec, hyperparams):
     
     if hyperparams['verbose'] == True:
-        print(argvec[0].shape)
-
-
-    seqvec = argvec[0]
-
+        print('argvec')
+        print(argvec[0])
+    seqvec =  argvec[0]
     propmat = np.zeros((len(hyperparams['propdict']),len(seqvec)))
     
     for i,prop in enumerate(hyperparams['propdict']):
@@ -203,7 +267,11 @@ def compose(functions):
     return retfunction
 
 def seq2numpy(argvec, hyperparams):
-    seq = argvec
+    try:
+        seq = argvec.decode('utf-8')
+    except AttributeError:
+        seq=argvec
+
     return [np.asarray( [char for char in seq] )]
 
 def worflow( input1, functions , kwargs):
@@ -226,16 +294,14 @@ def fastasToDF(fastas ,DDF = None):
 
     regex = re.compile('[^a-zA-Z1-9]')
     regexfast = re.compile('[^ARDNCEQGHILKMFPSTWYV]')
-
     DFdict={}
     for fasta in fastas:
         fastaIter = SeqIO.parse(fasta, "fasta")
         for seq in fastaIter:
-            if len(seq.seq)>0:
-                seqstr = regexfast.sub('', str(seq.seq))
-                desc = regex.sub(' ', str(seq.description))
-                DFdict[seq.description] = {'seq':seqstr , 'fasta':'>'+desc+'\n'+seqstr+'\n'}  
-    
+            seqstr = regexfast.sub('', str(seq.seq))
+            desc =regex.sub(' ', str(seq.description))
+            fastastr = '>'+desc+'\n'+seqstr+'\n'
+            DFdict[desc] = {'seq':bytearray(seqstr,'utf-8') , 'fasta': bytearray(fastastr ,'utf-8') }
     df = pd.DataFrame.from_dict(DFdict, orient = 'index')
     if DDF == None:
         DDF = dd.from_pandas(df , npartitions = mp.cpu_count() )
