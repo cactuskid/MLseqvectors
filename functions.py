@@ -39,7 +39,7 @@ import dask
 from dask.delayed import delayed
 import h5py
 
-
+########################hdf5 save and load #################################################################
 def hd5save(df, name , overwrite ,verbose = False):
     #dataframe columns should all be arrays or bytestrings w ascii encoding
 
@@ -109,6 +109,53 @@ def applypipeline_to_series(series, pipeline, hyperparams):
     if hyperparams['printResult']== True:
         print(newseries)
     return newseries
+ 
+##########################################Garnier pipeline################################################## 
+def retFastaTmp(df):
+    fastastr = ''.join( [ string for string in df['fasta'] ] )
+    temp = tempfile.NamedTemporaryFile(dir=config.savedir)
+    temp.write(fastastr)
+    #make tempfiles
+    return temp
+
+def runGarnier(fasta):
+    temp = tempfile.NamedTemporaryFile(dir=config.savedir)
+    cmd = 'garnier -sequence '+fasta.name+' -outfile '+ temp.name + ' -rformat excel '
+
+    if fasta == 'foo':
+        return '''sample garnier output''' 
+    else:
+        return openprocess(config.garnier, fasta, hyperparams['verbose'])
+
+    #fasta.name
+    #open garnier subprocess and return output file
+    pass
+
+def GarnierParser(garnierStr):
+    #parse garnier output. return matrix with alpha, beta and loop topology.
+    pass
+
+def Garnier2DF(fasta, garnier):
+    #parse garnier file and assign each output to an identifier
+    #assign 2ndarystruct matrix to each garnier string
+    pass
+
+##################################run processes, apply to dataframe partitions etc###########################################
+
+def runOnDelayed(DF , pipeline):
+    #split df into temp fastas
+    dfs = DF.to_delayed()
+    retdfs = [functions.delayed(pipeline) (df) for df in dfs]
+    DDF =None
+    for df in retdfs:
+        if DDF == None:
+            DDF = dd.from_pandas(df , npartitions = mp.cpu_count() )
+        else:
+            DDF.append(dd.from_pandas(df))
+    
+    return DDF
+
+
 
 def openprocess(args , inputstr =None , verbose = False ):
     args = shlex.split(args)
@@ -124,6 +171,9 @@ def openprocess(args , inputstr =None , verbose = False ):
     p.wait()
     return output[0].decode()
 
+
+
+######################################################################phobius tm topology predicition###############################################
 def parsephobius( phobiusstr,hyperparams ):
     maxlen = 0 
     lines = phobiusstr.split('\n')
@@ -158,12 +208,10 @@ def parsephobius( phobiusstr,hyperparams ):
     
     if hyperparams['verbose'] == True:
         print(propmat)
-
-
     return [propmat]
 
 def runphobius(seqstr , hyperparams):
-    #return generic output to get the dask DF set up. 
+    #return dummy output to get the dask DF set up. 
     if seqstr == 'foo':
         return '''ID   MTH_DROMEa signal peptide
                 FT   SIGNAL        1     24       
@@ -189,24 +237,44 @@ def runphobius(seqstr , hyperparams):
     else:
         return openprocess(config.phobius, seqstr, hyperparams['verbose'])
 
-"""
-def rungarnier(seqstr):
-    #run psipred and collect output
-    pass
 
-
-def bezier(stop, start):
-    for i in range(100):
-        n= i/100
-        (1-n)**2 p0 + 2*(1-n)*n p1 + n**2 p2  """
+######################################neural network functions ################################################33
 
 def hourglass(nlayers, mlayers, chokept, startneurons, endneurons):
-    
-    layersizes = np.zeros( (mlayers+nlayers,1 ))
+    layersizes = []
+    step1 = (chokept - startneurons )/ nlayers    
+    step2 = (endneurons - chokept)/nlayers
+    for i in range(nlayers):
+        layersizes.append( int(startneurons + step1*i))    
+    for i in range(mlayers):
+        layersizes.append( int(chokept + step2*i))    
+    return layersizes
 
-    #define NN architectcure with classic bottleneck shape
-    #pepper in some dropouts
-    pass
+
+
+#####################################physical props pipeline###########################################################
+
+def loadDict(csvfile):    
+    with open(csvfile , 'r') as filestr:
+        final = {}
+        propdict= csv.DictReader(filestr)
+        for row in propdict:
+            
+            for key in row.keys():
+                if key != 'letter Code' and key!= 'Amino Acid Name':
+                    if key not in final:
+                        final[key]={}
+                    final[key][row['letter Code']] = float(row[key])
+    return final
+
+def seq2numpy(argvec, hyperparams):
+    try:
+        seq = argvec.decode('ascii')
+    except AttributeError:
+        seq=argvec
+
+    return [np.asarray( [char for char in seq] )]
+
 
 def seq2vec(argvec, hyperparams):
     
@@ -222,6 +290,8 @@ def seq2vec(argvec, hyperparams):
 
     return [propmat]
 
+
+########################## signal processing functions #####################################
 def gaussianSmooth(argvec, hyperparams):
     seqvec = argvec[0]
 
@@ -260,25 +330,8 @@ def retfinal_first(argvec, hyperparams):
     #convenience function for unpacking
     return argvec[0]
     
-    
-def showmat(seqvec):
-    plt.imshow(seqvec ,  aspect='auto')
-    plt.colorbar()
-    plt.show()
-    
-def loadDict(csvfile):    
-    with open(csvfile , 'r') as filestr:
-        final = {}
-        propdict= csv.DictReader(filestr)
-        for row in propdict:
-            
-            for key in row.keys():
-                if key != 'letter Code' and key!= 'Amino Acid Name':
-                    if key not in final:
-                        final[key]={}
-                    final[key][row['letter Code']] = float(row[key])
-    return final
 
+#######################################pipeline building functions##############################################
 def retx(x):
     return x
 
@@ -291,19 +344,6 @@ def compose(functions):
 
     return retfunction
 
-def seq2numpy(argvec, hyperparams):
-    try:
-        seq = argvec.decode('ascii')
-    except AttributeError:
-        seq=argvec
-
-    return [np.asarray( [char for char in seq] )]
-
-def worflow( input1, functions , kwargs):
-    for function in functions:
-        input1 = function( (input1,kwargs) )  
-    return input1
-
 def dataGen( fastas , fulldata = False):
     for fasta in fastas:
         fastaIter = SeqIO.parse(fasta, "fasta")
@@ -314,7 +354,9 @@ def dataGen( fastas , fulldata = False):
                 else:
                     yield seq
 
-        
+
+
+###########################################################dataframe / dataset building ##########################################
 def fastasToDF(fastas ,DDF = None):
     regex = re.compile('[^a-zA-Z1-9]')
     regexfast = re.compile('[^ARDNCEQGHILKMFPSTWYV]')

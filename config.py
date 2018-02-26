@@ -21,7 +21,7 @@ overwrite = True
 load_data = True
 
 #generate a fasta with random entries from uniclust
-generate_negative = True
+generate_negative = False
 #size of negative sample
 NegSamplesize = 100000
 
@@ -41,7 +41,7 @@ datadir = '/scratch/cluster/monthly/dmoi/MachineLearning/'
 positive_datasets = workingdir + 'datasets/'
 negative_dataset = datadir + 'truenegative/'
 
-uniclust = datadir+ '/uniclust/uniclust30_2017_10/uniclust30_2017_10/uniclust30_2017_10_seed.fasta'
+uniclust = datadir+ '/uniclust/uniclust30_2017_10/uniclust30_2017_10_seed.fasta'
 scop = ''
 
 #programs for topology prediction, used in dataset generation

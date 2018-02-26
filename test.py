@@ -9,6 +9,7 @@ import dask
 dask.set_options(get=dask.multiprocessing.get)
 
 if config.create_data == True:
+	
 	chunks = functions.mp.cpu_count()
 	window = functions.sig.gaussian(config.nGaussian, std=config.stdv)
 	window /= functions.np.sum(window)
@@ -41,13 +42,14 @@ if config.create_data == True:
 	inputData = {'physical':'seq', 'phobius': 'fasta' }
 	df = None
 
+
 	if config.generate_negative == True:
 		print('generating negative sample fasta')
 		fastaIter = functions.SeqIO.parse(config.uniclust, "fasta")
 		sample = functions.iter_sample_fast(fastaIter, config.NegSamplesize)
 		samplename = config.negative_dataset+str(config.NegSamplesize)+'rand.fasta'
-		
-		seqIO.write(sample , samplename , format = 'fasta')
+		with open(samplename, "w") as output_handle:
+			functions.SeqIO.write(sample , output_handle , format = 'fasta')
 
 	for folder in positives + [config.negative_dataset]:
 		fastas = glob.glob(folder+'/*fasta')
@@ -61,8 +63,7 @@ if config.create_data == True:
 					fastaIter = functions.SeqIO.parse(fasta, "fasta")
 					for seq in fastaIter:
 						seqstr = regexfast.sub('', str(seq.seq))
-						desc = regex.sub(' ', seq.description)
-						fastastr = '>'+desc+'\n'+seqstr
+						fastastr = '>'+seq.description+'\n'+seqstr
 						print(fastastr)
 						#result = physicalProps_pipeline(seqstr)
 						#print (result)
@@ -76,6 +77,9 @@ if config.create_data == True:
 		meta = functions.dd.utils.make_meta( {name: object }, index=None)
 
 		df[name] = df[inputData[name]].map_partitions( pipelines[name] ).compute(get=get)
+
+	if config.verbose == True:
+		print(df)
 
 	if config.save_data_tohdf5 == True:
 		dfs = df.to_delayed()
