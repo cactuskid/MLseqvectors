@@ -6,7 +6,7 @@ import glob
 from dask.multiprocessing import get
 import dask
 
-dask.set_options(get=dask.multiprocessing.get)
+dask.set_options(get=dask.get)
 
 if config.create_data == True:
 	
@@ -33,16 +33,27 @@ if config.create_data == True:
 	    configured.append(functions.functools.partial( func , hyperparams=hyperparams ) )
 	phobius_pipeline = functions.compose(reversed(configured))
 
+
+
+	garnier_pipeline_functions = [  functions.runGarnier,  functions.GarnierParser, functions.gaussianSmooth, functions.fftall , functions.clipfft ]
+	configured = []
+	for func in garnier_pipeline_functions:
+	    configured.append(functions.functools.partial( func , hyperparams=hyperparams ) )
+	garnier_pipeline = functions.compose(reversed(configured))
+
 	##### final functions to be mapped #####
+	applyGarniertoseries = functions.functools.partial( functions.applypipeline_to_series , pipeline=garnier_pipeline  , hyperparams=hyperparams ) 
 	applyphobiustoseries = functions.functools.partial( functions.applypipeline_to_series , pipeline=phobius_pipeline  , hyperparams=hyperparams ) 
 	applyphysicaltoseries = functions.functools.partial( functions.applypipeline_to_series , pipeline=physicalProps_pipeline  , hyperparams=hyperparams ) 
+	
 	#use pipelines to generate feature vecotrs for fastas 
 	#store matrices in hdf5 files
-	pipelines={'physical':applyphysicaltoseries, 'phobius': applyphobiustoseries }
-	inputData = {'physical':'seq', 'phobius': 'fasta' }
+	
+	pipelines={'physical':applyphysicaltoseries, 'phobius': applyphobiustoseries , 'garnier': applyGarniertoseries }
+
+	inputData = {'physical':'seq', 'phobius': 'fasta' , 'garnier' : 'fasta' }
+
 	df = None
-
-
 	if config.generate_negative == True:
 		print('generating negative sample fasta')
 		fastaIter = functions.SeqIO.parse(config.uniclust, "fasta")
@@ -53,6 +64,9 @@ if config.create_data == True:
 
 	for folder in positives + [config.negative_dataset]:
 		fastas = glob.glob(folder+'/*fasta')
+		print(folder)
+		print(fastas)
+
 		if len(fastas)>0:
 			if config.testOne == True:
 				regex = functions.re.compile('[^a-zA-Z1-9]')
@@ -70,10 +84,17 @@ if config.create_data == True:
 						result = phobius_pipeline(fastastr)
 						print (result)
 			else:
-				df = functions.fastasToDF(fastas, df)
+				df = functions.fastasToDF(fastas, df , config.verbose)
 				df['folder'] = functions.np.string_(folder)
+	print(df)
+	
+	print('loaded fastas with categories:')
+	print(df['folder'].unique().compute(get=get ) )
+
 
 	for name in pipelines:
+		print('calculating ' + name)
+
 		meta = functions.dd.utils.make_meta( {name: object }, index=None)
 
 		df[name] = df[inputData[name]].map_partitions( pipelines[name] ).compute(get=get)
@@ -105,10 +126,62 @@ if config.load_data == True:
 	dataset = functions.DaskArray_hd5loadDataset(filenames , verbose=config.verbose)
 	print('dataset loaded with keys:')
 	print(dataset.keys())
+	
+	X = functions.da.concatenate( [ dataset['physical'] , dataset['phobius'] , dataset['garnier'] ] , axis = 1  )
+	Y = dataset['folder']
+
+	print(X[0:10,:].compute(get=dask.get))
+	print(Y[0:10].compute(get=dask.get))
 
 if config.make_networkmodel ==True:
-	pass
+	nlayers = 10
+	mlayers = 20
+	choke = 900
+	start = 3000
+	end = 3000 
+	dropout_interval = 15
+
+	#X = robust_scale(X)
+	X = functions.normalize(X)
+	functions.np.random.seed(0)
+	# encode class values as integers
+	encoder = functions.LabelEncoder()
+	
+	print(Y)
+
+	encoder.fit(Y)
+	encoded_Y = encoder.transform(Y)
+	
+	print(encoded_Y)
+
+	dummy_y = functions.np_utils.to_categorical(encoded_Y)
+
+	print(dummy_y)
+
+	inputdim=X.shape[1] 
+	outputdim = dummy_y.shape[1]
+
+	print(inputdim)
+	print(outputdim)
+
+	layers = functions.hourglass(nlayers, mlayers, choke, start, end)
+	
+	print('network shape')
+	print(layers)
+
+	model = functions.baseline_model(layers, inputdim, outputdim, dropout_interval )
+	#output a configured model function with no inputs
+	retmodel = functions.functools.partial( functions.baseline_model , layers, inputdim, outputdim, dropout_interval )   
+	#set up the problem
+	estimator = functions.KerasClassifier(build_fn=retmodel, epochs=15, batch_size=15, verbose=1)
 
 if config.learn == True:
-	pass
+	from sklearn.model_selection import KFold
+	kf= KFold(n_splits=5, shuffle=True, random_state=0)
 
+	results = []
+	for train, test in kf.split(X):
+		X_train, X_test, y_train, y_test = X[train], X[test], dummy_y[train], dummy_y[test]
+		encoded_Y_train, encoded_Y_test = encoded_Y[train], encoded_Y[test]
+		estimator.fit( X_train, y_train)
+		y_pred = estimator.predict( X_test)

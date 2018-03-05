@@ -102,6 +102,9 @@ def DaskArray_hd5loadDataset(files , verbose = False ):
                     print('append')
                     print(datasets[dataset])
                     print(datasets[dataset][0:10].compute(get=dask.get) )
+    
+    for key in datasets:
+        print(datasets[key][0:10].compute(get=dask.get))
     return datasets
 
 def applypipeline_to_series(series, pipeline, hyperparams):
@@ -118,27 +121,173 @@ def retFastaTmp(df):
     #make tempfiles
     return temp
 
-def runGarnier(fasta):
-    temp = tempfile.NamedTemporaryFile(dir=config.savedir)
-    cmd = 'garnier -sequence '+fasta.name+' -outfile '+ temp.name + ' -rformat excel '
+def runGarnier(fasta , hyperparams):
+    
+    if hyperparams['verbose'] == True:
+        print(fasta)
 
     if fasta == 'foo':
-        return '''sample garnier output''' 
+        default = str("""########################################
+        # Program: garnier
+        # Rundate: Mon 26 Feb 2018 16:24:35
+        # Commandline: garnier
+        #    -filter
+        # Report_format: tagseq
+        # Report_file: stdout
+        ########################################
+
+        #=======================================
+        #
+        # Sequence: SAMEA2619974_10776_4     from: 1   to: 604
+        # HitCount: 163
+        #
+        # DCH = 0, DCS = 0
+        # 
+        #  Please cite:
+        #  Garnier, Osguthorpe and Robson (1978) J. Mol. Biol. 120:97-120
+        # 
+        #
+        #=======================================
+
+                  .   10    .   20    .   30    .   40    .   50
+              MYKRKIIIPILLFVILSLIVSAFSTLSLDRVDFSTRGDEFDQQWLLLISE
+        helix HHHH                                    HHHHH     
+        sheet     EEEEEEEEEEEEEEEEEEE    E EEEE            EEE  
+        turns                             T       TT T         T
+         coil                        CCCC      CCC  C         C 
+                  .   60    .   70    .   80    .   90    .  100
+              DGRADKAVVTKKAEEIKDDKIHAKNDLTIKTEIDKNSCVYTIQNINQPIS
+        helix HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH                 
+        sheet                                      EEEEEE     EE
+        turns                                  TTTT      TT     
+         coil                                              CCC  
+                  .  110    .  120    .  130    .  140    .  150
+              RLDYTKKTVWKFWDIPNEIKSCEQREGYYWAFNLGFDFNVYCFFTPAGKD
+        helix                      HH                           
+        sheet EE      EEE                   EEE      E   E      
+        turns   TTTTTT   TT   TTTTT  TTTTTTT    TTTTT TTT   TTT 
+         coil              CCC                 C          CC   C
+                  .  160    .  170    .  180    .  190    .  200
+              SFVGRISDKKYDFNTKITLTSGGESKSVDISNSNRVSNSVPDYFVAKWHG
+        helix                                               H   
+        sheet  EEEE        EEEEEE      EEEEE        E   EEEE    
+        turns       TTTTTTT                    TTTTT   T     T T
+         coil C    C             CCCCCC     CCC      CC       C 
+                  .  210    .  220    .  230    .  240    .  250
+              SLSTGAECPDITSLSPIYDRDSGEWKLGEKSSISNYQSFHSSGMKECLNS
+        helix                        HHHHH                HHHHHH
+        sheet       EEE  E EEE E                  E             
+        turns    TTT   TT T   T TTT       T  TT TT  TTT TT      
+         coil CCC                  CC      CC  C   C   C        
+                  .  260    .  270    .  280    .  290    .  300
+              YIIARTTGGLIVETPDSCKKRYNDLVEKAQSPEVFNIKGSTGSMTTQSSE
+        helix                       HHHHHHHHHHHH                
+        sheet EEEEEE   EEEEE                    EEE             
+        turns               TTTTTTTT               TT           
+         coil       CCC                              CCCCCCCCCCC
+                  .  310    .  320    .  330    .  340    .  350
+              LGELVVEDVQPFQFPVISLKINADWIGIVQPITKPTILSCESSKFKQGEI
+        helix   HHHHHHH                              HH    HH  H
+        sheet             EEEEE        EEEEE     EEEE           
+        turns           TT           TT      T  T      TTTT     
+         coil CC       C       CCCCCC       C CC             CC 
+                  .  360    .  370    .  380    .  390    .  400
+              GEIDVEVKNKGESGSVSISTVCLSPFKSVGTTPIIRLKKGESKSITVPIT
+        helix HHHHHHHH                                          
+        sheet                EEEEEEEE        EEEEEE       EEEEEE
+        turns         T  T TT         TTTTTT       T TTTTT      
+         coil          CC C          C      C       C           
+                  .  410    .  420    .  430    .  440    .  450
+              VSTKEDVSKTCSVTVQDESDPSVRVSKRCDVSASGVVLCEAGKKRCSGRF
+        helix   HH                  H              HHHHH        
+        sheet E          EEEEE       EEEEEE E   EEE            E
+        turns     TTTTTTT     TT  TT       T TTT        TTTTTTT 
+         coil  C                CC                              
+                  .  460    .  470    .  480    .  490    .  500
+              IEQCKSSGSEYGLIEECELDCKLDKYGQPFCPEVTPPPPPPPNGNGDKCE
+        helix             HHHHHHHHHHH                           
+        sheet EE                            EE                EE
+        turns   TTT  T               TTTT TT  TT       TTTTTTT  
+         coil      CC CCCC               C      CCCCCCC         
+                  .  510    .  520    .  530    .  540    .  550
+              PIWAIAKITIIPDFICEMEKVPYLKEGISGLVGFVMFIILIFMLKNLIGF
+        helix HHHHHH       HHHHHHHHHHHHH          HHHHHHHHH     
+        sheet       EEEEE                EE EEEEEE              
+        turns             T             T                       
+         coil            C                 C               CCCCC
+                  .  560    .  570    .  580    .  590    .  600
+              ENIPQRLMVLGFSLIIAILLGFLFYYLFWFGVALIVALVVMFFVIKIILG
+        helix            HHH               HHHHHHHHHHHHHHHHHHHH 
+        sheet      EEEEEE   EEEEEEEEEEEE                        
+        turns     T                     TTT                    T
+         coil CCCC                                              
+              0
+              KVGL
+        helix     
+        sheet    E
+        turns T   
+         coil  CC 
+
+        #---------------------------------------
+        #
+        #  Residue totals: H:158   E:177   T:162   C:107
+        #         percent: H: 26.9 E: 30.1 T: 27.6 C: 18.2
+        #
+        #---------------------------------------
+
+        #---------------------------------------
+        # Total_sequences: 1
+        # Total_length: 604
+        # Reported_sequences: 1
+        # Reported_hitcount: 163
+        #---------------------------------------
+        """)
+        if hyperparams['verbose'] ==True:
+            print(default)
+
+        return default
+
+        
     else:
-        return openprocess(config.garnier, fasta, hyperparams['verbose'])
+        return openprocess(config.garnier, fasta , hyperparams['verbose'])
 
-    #fasta.name
-    #open garnier subprocess and return output file
-    pass
+    
 
-def GarnierParser(garnierStr):
+def GarnierParser(garnierStr,hyperparams):
     #parse garnier output. return matrix with alpha, beta and loop topology.
-    pass
 
-def Garnier2DF(fasta, garnier):
-    #parse garnier file and assign each output to an identifier
-    #assign 2ndarystruct matrix to each garnier string
-    pass
+    helixstr=''
+    sheetstr=''
+    trunstr=''
+    coilstr=''
+
+    
+    for line in garnierStr.split('\n'):
+
+        if 'helix' in line:
+            helixstr += line[5:55]
+        elif 'sheet' in line:
+            sheetstr += line[5:55]
+        elif 'turns' in line:
+            trunstr+= line[5:55]
+        elif 'coil' in line:
+            coilstr+= line[5:55]
+
+    features = [helixstr, sheetstr , trunstr , coilstr ]
+    if hyperparams['verbose'] == True:
+        for feat in features:
+            print(feat)
+    
+    veclen = max( [len(stringdata) for stringdata in  features] )
+    if  hyperparams['verbose'] == True:
+        print(veclen)
+    featmat = np.zeros( (len(features) , veclen))
+    
+    for i , seqstr in enumerate(features):
+        index = [i for i, letter in enumerate(seqstr) if letter != ' ']
+        featmat[i , index ] = 1 
+
+    return [featmat]
 
 ##################################run processes, apply to dataframe partitions etc###########################################
 
@@ -156,10 +305,9 @@ def runOnDelayed(DF , pipeline):
     return DDF
 
 
-
 def openprocess(args , inputstr =None , verbose = False ):
     args = shlex.split(args)
-    p = subprocess.Popen(args,  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr= subprocess.PIPE)
+    p = subprocess.Popen(args,  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr= subprocess.PIPE )
     if verbose == True:
         print(inputstr.decode())
     if inputstr != None:
@@ -238,7 +386,36 @@ def runphobius(seqstr , hyperparams):
         return openprocess(config.phobius, seqstr, hyperparams['verbose'])
 
 
+
 ######################################neural network functions ################################################33
+
+
+
+from keras.models import Sequential
+from keras.layers import Dense, Conv1D, Dropout
+from keras.wrappers.scikit_learn import KerasClassifier
+from keras.utils import np_utils
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import KFold , train_test_split
+from sklearn.preprocessing import LabelEncoder , robust_scale , normalize
+from sklearn.pipeline import Pipeline
+
+def baseline_model(layers, inputdim, outputdim, dropout_interval ):
+    #try convolutional layer?
+    #try dropout layer
+    model = Sequential()
+    for i,size in enumerate(layers):
+        if i ==0 :
+            model.add(Dense(size , input_dim= inputdim  ))
+        else:
+            model.add(Dense(size ))
+        if i % dropout_interval == 0:
+        #added a dropout layer so it would generalize better
+            model.add(Dropout(.5))    
+    model.add(Dense(outputdim , activation = 'softmax'))
+    # Compile model
+    model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+    return model
 
 def hourglass(nlayers, mlayers, chokept, startneurons, endneurons):
     layersizes = []
@@ -249,7 +426,6 @@ def hourglass(nlayers, mlayers, chokept, startneurons, endneurons):
     for i in range(mlayers):
         layersizes.append( int(chokept + step2*i))    
     return layersizes
-
 
 
 #####################################physical props pipeline###########################################################
@@ -354,10 +530,8 @@ def dataGen( fastas , fulldata = False):
                 else:
                     yield seq
 
-
-
 ###########################################################dataframe / dataset building ##########################################
-def fastasToDF(fastas ,DDF = None):
+def fastasToDF(fastas , DDF = None, verbose=False):
     regex = re.compile('[^a-zA-Z1-9]')
     regexfast = re.compile('[^ARDNCEQGHILKMFPSTWYV]')
     DFdict={}
@@ -368,13 +542,16 @@ def fastasToDF(fastas ,DDF = None):
             desc =regex.sub(' ', str(seq.description))
             fastastr = '>'+desc+'\n'+seqstr+'\n'
             DFdict[desc] = {'seq':seqstr.encode() , 'fasta': fastastr.encode() }
+    
     df = pd.DataFrame.from_dict(DFdict, orient = 'index')
-    if DDF == None:
-        DDF = dd.from_pandas(df , npartitions = mp.cpu_count() )
-    else:
-        DDF.append(dd.from_pandas(df , npartitions = mp.cpu_count() ))
-    return DDF
+    if verbose == True:
+        print(df)
 
+    try:
+        DDF= dd.concat( [DDF,dd.from_pandas(df, npartitions = mp.cpu_count() )] , axis =0  )
+    except:
+        DDF = dd.from_pandas(df , npartitions = mp.cpu_count()  )
+    return DDF
 
 def iter_sample_fast(iterator, samplesize):
     results = []
