@@ -1,39 +1,52 @@
 
-loadRandom = True
-negativesamples = 10000
+
 verbose = False
 
 #gaussian smooth to apply physical properties of neighbors to each residue. tuneable kmer?
 nGaussian = 7
-stdv = .5
+stdv = .25
 
 create_data = True
-dataname = 'firstdataset'
-#test one fasta through pipelines
 
-testOne = False
-#save dataset to hdf5
+
+
+dataname = 'testdb'
+ecodFasta = './datasets/ECOD/ecod.latest.F99.fasta'
+RunWithEcod = True
+
+pipelines = ['physical', 'garnier', 'phobius']
+
 save_data_tohdf5 = True
 #overwrite Hdf5 data
 overwrite = True
-
-
 load_data = True
-
+visualize = True
 make_networkmodel = True
-
 learn = True
+
+
+from keras.layers.noise import AlphaDropout
+
+nnProps = { 'nlayers':2 , 'mlayers':2, 'choke':40 , 'start':100 , 'end':50 , 'dropout_rate':.1  , 'activation':'selu',
+				   'dropout':AlphaDropout,
+				   "kernel_initializer":'lecun_normal',
+				   'optimizer':'adam',
+					}
 
 
 #generate a fasta with random entries from uniclust
 generate_negative = False
 #size of negative sample
-NegSamplesize = 100000
+NegSamplesize = 10000
 
 
 
 #local folders
 workingdir = './'
+
+#output the trained neural network to file
+model_path = '.NN.hdf'
+
 
 #physical properties table to use in dataset generation
 proptable = './physicalpropTable.csv'
