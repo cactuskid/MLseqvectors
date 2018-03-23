@@ -349,11 +349,12 @@ def parseCoils(coilsOut, hyperparams):
 	countmat[0] = coildLen
 	countmat[1] = coildLen/length
 
-	coilmat = np.zeros( ( 1 , length) )
+	coilmat = np.zeros( ( length ,1) )
 	for line in coilsOut.split('\n'):
+		
 		#1228 P g   0.344   0.000 (  0.000   0.233)
 		values = line.split()
-		coilmat = float(values[3])	
+		coilmat[i] = float(values[3])	
 	return [coilmat, countmat]
 
 
@@ -610,10 +611,6 @@ def fastasToDF(fastas , DDF = None, verbose=False, ecodDB = False):
 	
 	DDF = dd.from_pandas(df , npartitions = 4*mp.cpu_count()  )
 	
-	if ecodDB == True:
-		DDF.set_index('ECOD uid')
-	else:
-		DDF.set_index('desc')
 	return DDF
 
 ########################################################################vis

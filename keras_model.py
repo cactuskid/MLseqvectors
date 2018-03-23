@@ -30,6 +30,7 @@ def selu_network(  input_dim, output_dim , retmodel):
 		A Keras model instance (compiled).
 	"""
 
+	#hyper params to be otpimized at some point
 	nnProps = { 'nlayers':2 , 'mlayers':2, 'choke':40 , 'start':100 , 'end':50 , 'dropout_rate':.1  , 'activation':'selu',				   
 				   "kernel_initializer":'lecun_normal',
 				   'optimizer':'adam'
@@ -54,7 +55,6 @@ def selu_network(  input_dim, output_dim , retmodel):
 	#compile
 	
 	x = tf.placeholder(tf.float32, shape=(None, input_dim))
-
 	#placeholder y
 	y = model(x)
 	#use tensorflow optimizer

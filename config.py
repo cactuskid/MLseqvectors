@@ -6,8 +6,7 @@ verbose = False
 #####run in distributed mode with a client, scheduler and workers######
 #scheduler should be initialized outside of this script#
 distributed = True
-schedulerIP = "130.223.123.113:8786"
-schedulerFile = ''
+schedulerFile = '.config.json'
 
 
 
@@ -15,7 +14,7 @@ schedulerFile = ''
 nGaussian = 7
 stdv = .25
 
-create_data = False
+create_data = True
 dataname = 'testdb'
 ecodFasta = './datasets/ECOD/ecod.latest.F99.fasta'
 RunWithEcod = False
