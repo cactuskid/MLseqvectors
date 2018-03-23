@@ -37,11 +37,18 @@ import config
 import dask.dataframe as dd
 import dask.array as da
 import dask
+from distributed import Client, progress
+
 from dask.delayed import delayed
 import h5py
 import gc
 
-dask.set_options(get=dask.threaded.get)
+import config
+
+if config.distributed:
+	dask.set_options(get=Client.get)
+else:
+	dask.set_options(get=dask.threaded.get)
 
 ########################hdf5 save and load #################################################################
 def hd5save(df, name , overwrite ,verbose = False , pipelines= None ):
@@ -294,11 +301,62 @@ def GarnierParser(garnierStr,hyperparams):
 		print(veclen)
 	featmat = np.zeros( (len(features) , veclen))
 	
+	#percent composition alpha beta coil turn
+	countmat = np.zeros( (len(features)) )
+	
+
 	for i , seqstr in enumerate(features):
 		index = [i for i, letter in enumerate(seqstr) if letter != ' ']
-		featmat[i , index ] = 1 
+		featmat[i , index ] = 1
 
-	return [featmat]
+	for i , seqstr in enumerate(features):
+		countmat = np.sum(featmat[i,:])/veclen
+	
+	return [featmat, countmat]
+
+
+##############################################coiled coil prediction #################################################
+
+
+
+def runCoils(fasta , hyperparams):
+	
+	if hyperparams['verbose'] == True:
+		print(fasta)
+
+	if fasta == 'foo':
+		with open('/coils/sampleout.txt' 'r') as sampleout:
+			outstr = sampleout.read()
+		return outstr
+	else:
+		return openprocess(config.coils, fasta , hyperparams['verbose'])
+
+def parseCoils(coilsOut, hyperparams):
+	"""COILS does not reach yes-or-no decisions based on a threshold value. Rather,
+	it yields a set of probabilities that presumably reflect the coiled-coil forming potential of a sequence. 
+	This means that even at high probabilities (e.g. >90%), there will be (and should be) sequences that 
+	in fact do not form a coiled coil, 
+	though they may have the potential to do so in a different context."""
+	cutoff = .9
+	coiled = ''
+
+	countmat = np.zeros((2,1))
+	for line in coilsOut.split('\n'):
+		if 'sequences' in line:
+			values = line.split()
+			length = int(values[2])
+			coildLen = int(values[4])
+	countmat[0] = coildLen
+	countmat[1] = coildLen/length
+
+	coilmat = np.zeros( ( 1 , length) )
+	for line in coilsOut.split('\n'):
+		#1228 P g   0.344   0.000 (  0.000   0.233)
+		values = line.split()
+		coilmat = float(values[3])	
+	return [coilmat, countmat]
+
+
 
 ##################################run processes, apply to dataframe partitions etc###########################################
 
@@ -346,7 +404,12 @@ def parsephobius( phobiusstr,hyperparams ):
 			except:
 				pass
 	domains =  {'SIGNAL':0, 'CYTOPLASMIC':1, 'NON CYTOPLASMIC':2, 'NON CYTOPLASMIC':3, 'TRANSMEMBRANE':4}
+
+	counts =  {'SIGNAL':0, 'CYTOPLASMIC':1, 'NON CYTOPLASMIC':2, 'NON CYTOPLASMIC':3, 'TRANSMEMBRANE':4}
+	
+
 	propmat = np.zeros((len(domains),maxlen))
+	countmat = np.zeros(len(counts))
 
 	for i,line in enumerate(lines):
 		vals = line.split()
@@ -364,10 +427,11 @@ def parsephobius( phobiusstr,hyperparams ):
 				start = int(vals[2])
 				end = int(vals[3])
 				propmat[ domains[key] , start:end ] = 1
-	
+				countmat[counts[key]] += 1
 	if hyperparams['verbose'] == True:
 		print(propmat)
-	return [propmat]
+		print(countmat)
+	return [propmat , countmat]
 
 def runphobius(seqstr , hyperparams):
 	#return dummy output to get the dask DF set up. 
@@ -398,85 +462,6 @@ def runphobius(seqstr , hyperparams):
 
 
 
-######################################neural network functions ################################################33
-
-
-from keras import utils
-from keras.models import Sequential
-from keras.layers import Dense, Conv1D, Dropout
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.utils import np_utils
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import KFold , train_test_split
-from sklearn.preprocessing import LabelEncoder , robust_scale , normalize
-from sklearn.pipeline import Pipeline
-from keras import regularizers
-from keras.layers import Dense, Activation, Dropout , PReLU
-from keras.layers.noise import AlphaDropout
-
-import tensorflow as tf
-#build a funtion to see the output of a layer
-def get_output_N(model , layer):
-	f = K.function([model.layers[0].input], [model.layers[layer].output])
-	return f
-
-def selu_network(  nnProps, input_dim, output_dim ):
-	"""Generic function to create a fully-connected neural network.
-	# Arguments
-		n_dense: int > 0. Number of dense layers.
-		dense_units: int > 0. Number of dense units per layer.
-		dropout: keras.layers.Layer. A dropout layer to apply.
-		dropout_rate: 0 <= float <= 1. The rate of dropout.
-		kernel_initializer: str. The initializer for the weights.
-		optimizer: str/keras.optimizers.Optimizer. The optimizer to use.
-		num_classes: int > 0. The number of classes to predict.
-		max_words: int > 0. The maximum number of words per data point.
-	# Returns
-		A Keras model instance (compiled).
-	"""
-	dropout=nnProps['dropout']
-	layers = hourglass( nnProps['nlayers'] , nnProps['mlayers'] ,nnProps['choke'] , nnProps['start'],nnProps['end'])
-
-	model = Sequential()
-	for i,size in enumerate(layers):
-		if i==0:
-
-			model.add(Dense(size, kernel_initializer=nnProps['kernel_initializer'] , input_dim = input_dim))
-			model.add(Activation(nnProps['activation']))
-			model.add(dropout(nnProps['dropout_rate']))
-		else:
-			model.add(PReLU(alpha_initializer='zeros', alpha_regularizer=None, alpha_constraint=None, shared_axes=None))
-			model.add(dropout(nnProps['dropout_rate']))
-
-			
-	model.add(Dense(output_dim , activation= 'softmax'))
-	
-	model.compile(loss='categorical_crossentropy',
-				  optimizer=nnProps['optimizer'],
-				  metrics=['accuracy'])
-	
-	return model
-
-
-def hourglass(nlayers, mlayers, chokept, startneurons, endneurons):
-	layersizes = []
-	step1 = (chokept - startneurons )/ nlayers    
-	step2 = (endneurons - chokept)/nlayers
-	for i in range(nlayers):
-		layersizes.append( int(startneurons + step1*i))    
-	for i in range(mlayers):
-		layersizes.append( int(chokept + step2*i))    
-	return layersizes
-
-
-def input_function(features,labels=None,shuffle=False):
-    input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"posts_input": features},
-        y=labels,
-        shuffle=shuffle
-    )
-    #tensorflow input function
-    return input_fn
 
 #####################################physical props pipeline###########################################################
 
@@ -502,6 +487,7 @@ def seq2numpy(argvec, hyperparams):
 
 
 def seq2vec(argvec, hyperparams):
+	#countmat is length of sequence
 	
 	if hyperparams['verbose'] == True:
 		print(hyperparams['propdict'].keys())
@@ -509,7 +495,8 @@ def seq2vec(argvec, hyperparams):
 		print(argvec[0])
 	seqvec =  argvec[0]
 	propmat = np.zeros((len(hyperparams['propdict']),len(seqvec)))
-	
+	countmat = np.asarray([len(seqvec)])
+
 	for i,prop in enumerate(hyperparams['propdict']):
 		vals = np.vectorize( hyperparams['propdict'][prop].get)(seqvec)
 		propmat[i,:] = vals.ravel()
@@ -517,19 +504,21 @@ def seq2vec(argvec, hyperparams):
 	if hyperparams['verbose'] == True:
 		print('propmat')
 		print(propmat)
-	return [propmat]
+	return [propmat,countmat]
 
 
 ########################## signal processing functions #####################################
 def gaussianSmooth(argvec, hyperparams):
 	seqvec = argvec[0]
-
+	countmat = argvec[1]
 	for i in range(seqvec.shape[0]):
 		seqvec[i,:] = sig.fftconvolve(seqvec[i,:], hyperparams['Gaussian'], mode='same')
-	return [seqvec]
+	return [seqvec, countmat]
 
 def fftall(argvec, hyperparams):
 	seqvec = argvec[0]
+	countmat = argvec[1]
+
 	fftmat = np.zeros( seqvec.shape )
 	if hyperparams['verbose']== True:
 		print(fftmat.shape)
@@ -540,25 +529,30 @@ def fftall(argvec, hyperparams):
 	if hyperparams['verbose']== True:
 		print(fftmat)
 
-	return [fftmat ]
+	return [fftmat ,countmat ]
 
 
 def clipfft(argvec, hyperparams):
 	#ony up to a certain frequency pad w zeros if fftmat is too small
 	fftmat = argvec[0]
+	countmat = argvec[1]
 	
-	if fftmat.shape[1]-1 < hyperparams['clipfreq']:
-		padded = np.hstack( [fftmat , np.zeros( ( fftmat.shape[0] , hyperparams['clipfreq'] - fftmat.shape[1] ))] )
-		if hyperparams['verbose'] == True:
-			print ('DONE')
-		gc.collect()
-		return padded.ravel()
+	if hyperparams['onlycount'] == True:
+		return countmat.ravel()
 	else:
-		if hyperparams['verbose'] == True:
+		if fftmat.shape[1]-1 < hyperparams['clipfreq']:
+			padded = np.hstack( [fftmat , np.zeros( ( fftmat.shape[0] , hyperparams['clipfreq'] - fftmat.shape[1] ))] )
+			if hyperparams['verbose'] == True:
+				print ('DONE')
+			gc.collect()
 			
-			print ('DONE')
-		gc.collect()
-		return  fftmat[:,:hyperparams['clipfreq']].ravel()
+			return np.concatenate( (countmat.ravel() , padded.ravel()))
+		else:
+			if hyperparams['verbose'] == True:
+				
+				print ('DONE')
+			gc.collect()
+			return  np.concatenate((countmat.ravel() , fftmat[:,:hyperparams['clipfreq']].ravel()))
 
 
 def retfinal_first(argvec, hyperparams):
@@ -622,20 +616,6 @@ def fastasToDF(fastas , DDF = None, verbose=False, ecodDB = False):
 		DDF.set_index('desc')
 	return DDF
 
-def iter_sample_fast(iterator, samplesize):
-	results = []
-	# Fill in the first samplesize elements:
-	for _ in range(samplesize):
-		results.append(next(iterator))
-	random.shuffle(results)  # Randomize their positions
-	for i, v in enumerate(iterator, samplesize):
-		r = random.randint(0, i)
-		if r < samplesize:
-			results[r] = v  # at a decreasing rate, replace random items
-
-	if len(results) < samplesize:
-		raise ValueError("Sample larger than population.")
-	return results
 ########################################################################vis
 
 from matplotlib import pyplot as plt
@@ -650,9 +630,6 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
 		print("Normalized confusion matrix")
 	else:
 		print('Confusion matrix, without normalization')
-
-	print(cm)
-
 	plt.imshow(cm, interpolation='nearest', cmap=cmap)
 	plt.title(title)
 	plt.colorbar()
@@ -669,4 +646,4 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
 	plt.tight_layout()
 	plt.ylabel('True label')
 	plt.xlabel('Predicted label')
-	plt.show()
+	plt.savefig(str(len(classes))+'_classConfusion.png')
